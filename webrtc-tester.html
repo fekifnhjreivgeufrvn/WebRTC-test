@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebRTC P2P Tester</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg: #0a0c10;
+    --surface: #111418;
+    --border: #1e2530;
+    --accent: #00e5a0;
+    --accent2: #0096ff;
+    --warn: #ffaa00;
+    --err: #ff4757;
+    --text: #c8d6e5;
+    --muted: #4a5568;
+    --success: #00e5a0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    padding: 20px;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at 20% 20%, rgba(0,229,160,0.04) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 80%, rgba(0,150,255,0.04) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 32px;
+    padding-top: 12px;
+  }
+
+  .header h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(18px, 3vw, 28px);
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-shadow: 0 0 30px rgba(0,229,160,0.4);
+    margin-bottom: 6px;
+  }
+
+  .header p {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  @media (max-width: 680px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.4;
+  }
+
+  .panel-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .panel-header .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .panel-header .dot.active { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .panel-header .dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+  .panel-header .dot.err { background: var(--err); box-shadow: 0 0 8px var(--err); }
+
+  .panel-body { padding: 14px; }
+
+  /* Status Panel */
+  .status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .status-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+
+  .status-label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .status-value {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    transition: color 0.3s;
+  }
+  .status-value.ok { color: var(--success); }
+  .status-value.warn { color: var(--warn); }
+  .status-value.err { color: var(--err); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 12px rgba(0,229,160,0.15);
+  }
+
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .btn.primary {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: inset 0 0 20px rgba(0,229,160,0.05);
+  }
+  .btn.primary:hover:not(:disabled) {
+    background: rgba(0,229,160,0.1);
+    box-shadow: 0 0 20px rgba(0,229,160,0.25);
+  }
+
+  .btn.danger { border-color: var(--err); color: var(--err); }
+  .btn.danger:hover:not(:disabled) {
+    background: rgba(255,71,87,0.1);
+    box-shadow: 0 0 12px rgba(255,71,87,0.2);
+  }
+
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* SDP textarea */
+  .sdp-label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    line-height: 1.5;
+    padding: 10px;
+    resize: vertical;
+    min-height: 90px;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+  textarea:focus { border-color: var(--accent2); }
+
+  /* Log */
+  .log {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    height: 200px;
+    overflow-y: auto;
+    padding: 10px;
+    font-size: 10px;
+    line-height: 1.7;
+  }
+
+  .log::-webkit-scrollbar { width: 4px; }
+  .log::-webkit-scrollbar-track { background: transparent; }
+  .log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .log-entry { display: flex; gap: 8px; }
+  .log-time { color: var(--muted); flex-shrink: 0; }
+  .log-msg { color: var(--text); }
+  .log-msg.ok { color: var(--success); }
+  .log-msg.warn { color: var(--warn); }
+  .log-msg.err { color: var(--err); }
+  .log-msg.info { color: var(--accent2); }
+  .log-msg.recv { color: #c792ea; }
+
+  /* Message input */
+  .msg-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  input[type="text"] {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input[type="text"]:focus { border-color: var(--accent); }
+  input[type="text"]::placeholder { color: var(--muted); }
+
+  /* Full-width panel */
+  .full { grid-column: 1 / -1; }
+
+  /* Divider */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 12px 0;
+  }
+
+  /* Ping result */
+  #pingResult {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 8px;
+    min-height: 16px;
+    transition: color 0.3s;
+  }
+
+  /* Stats bar */
+  .stat-row {
+    display: flex;
+    gap: 16px;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  .stat-row span b {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* Blinking cursor */
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  .cursor { animation: blink 1s step-end infinite; }
+
+  /* Pulse animation for active dot */
+  @keyframes pulse-glow {
+    0%,100% { box-shadow: 0 0 6px var(--accent); }
+    50% { box-shadow: 0 0 14px var(--accent), 0 0 30px rgba(0,229,160,0.3); }
+  }
+  .dot.active { animation: pulse-glow 2s ease-in-out infinite; }
+
+  .instructions {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent2);
+    border-radius: 4px;
+    padding: 12px 14px;
+    font-size: 10px;
+    line-height: 1.8;
+    color: var(--muted);
+  }
+  .instructions b { color: var(--accent2); }
+  .instructions ol { padding-left: 16px; }
+  .instructions li { margin-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>// WebRTC_P2P_TESTER <span class="cursor">█</span></h1>
+  <p>Data channel diagnostic &amp; local multiplayer feasibility check</p>
+</div>
+
+<div class="grid">
+
+  <!-- STATUS -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="dot" id="connDot"></div>
+      <span>Connection State</span>
+    </div>
+    <div class="panel-body">
+      <div class="status-grid">
+        <div class="status-item">
+          <div class="status-label">WebRTC Support</div>
+          <div class="status-value" id="rtcSupport">—</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">ICE State</div>
+          <div class="status-value" id="iceState">—</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Data Channel</div>
+          <div class="status-value" id="dcState">—</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Role</div>
+          <div class="status-value" id="roleLabel">—</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn primary" id="btnHost" onclick="startHost()">⬡ Host</button>
+        <button class="btn" id="btnJoin" onclick="startJoin()">⬢ Join</button>
+        <button class="btn danger" id="btnReset" onclick="reset()">✕ Reset</button>
+      </div>
+
+      <div id="pingResult"></div>
+
+      <div class="stat-row">
+        <span>TX: <b id="txCount">0</b></span>
+        <span>RX: <b id="rxCount">0</b></span>
+        <span>RTT: <b id="rttLabel">—</b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIGNALLING -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="dot warn" id="sigDot"></div>
+      <span>Manual Signalling (SDP)</span>
+    </div>
+    <div class="panel-body">
+      <p class="sdp-label">Your SDP (copy &amp; send to peer)</p>
+      <textarea id="localSDP" readonly placeholder="Click HOST or JOIN to generate SDP…"></textarea>
+
+      <hr class="divider">
+
+      <p class="sdp-label">Peer SDP (paste from peer)</p>
+      <textarea id="remoteSDP" placeholder="Paste the peer's SDP here…"></textarea>
+
+      <div class="btn-row" style="margin-top:10px;">
+        <button class="btn" id="btnApply" onclick="applyRemote()" disabled>↩ Apply Peer SDP</button>
+        <button class="btn" onclick="copySDP()">⎘ Copy Mine</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG + MESSAGE -->
+  <div class="panel full">
+    <div class="panel-header">
+      <div class="dot" id="logDot"></div>
+      <span>Live Log &amp; Messaging</span>
+    </div>
+    <div class="panel-body">
+      <div class="log" id="log"></div>
+      <div class="msg-row">
+        <input type="text" id="msgInput" placeholder="Type a message and press Enter…" onkeydown="if(event.key==='Enter')sendMsg()" disabled>
+        <button class="btn primary" id="btnSend" onclick="sendMsg()" disabled>Send</button>
+        <button class="btn" onclick="sendPing()" id="btnPing" disabled>Ping</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INSTRUCTIONS -->
+  <div class="panel full">
+    <div class="panel-header">
+      <div class="dot warn"></div>
+      <span>How To Test (No Server Needed)</span>
+    </div>
+    <div class="panel-body">
+      <div class="instructions">
+        <ol>
+          <li><b>Device A</b> → click <b>HOST</b>. An SDP offer appears in "Your SDP". Copy it.</li>
+          <li><b>Device B</b> → open this same page, click <b>JOIN</b>. An SDP offer appears. Copy it.</li>
+          <li><b>Device A</b> → paste Device B's SDP into "Peer SDP", click <b>Apply Peer SDP</b>. A new SDP (answer) appears in "Your SDP".</li>
+          <li><b>Device B</b> → paste Device A's new SDP into "Peer SDP", click <b>Apply Peer SDP</b>.</li>
+          <li>Both devices should show <b>Data Channel: open</b> — you can now send messages and ping for RTT.</li>
+        </ol>
+        <br>
+        <b>Note:</b> This uses manual copy-paste signalling (no STUN/TURN server). Works on LAN. Internet peers may need a STUN server added.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ──────────────────────────────────────────────
+// State
+// ──────────────────────────────────────────────
+let pc = null, dc = null, role = null;
+let txCount = 0, rxCount = 0;
+let pingSentAt = null;
+
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+// ──────────────────────────────────────────────
+// Logging
+// ──────────────────────────────────────────────
+function log(msg, type = '') {
+  const el = document.getElementById('log');
+  const now = new Date().toTimeString().slice(0,8);
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${now}</span><span class="log-msg ${type}">${msg}</span>`;
+  el.appendChild(entry);
+  el.scrollTop = el.scrollHeight;
+
+  const dot = document.getElementById('logDot');
+  dot.className = 'dot active';
+  setTimeout(() => dot.className = 'dot', 600);
+}
+
+// ──────────────────────────────────────────────
+// UI helpers
+// ──────────────────────────────────────────────
+function setStatus(id, val, cls = '') {
+  const el = document.getElementById(id);
+  el.textContent = val;
+  el.className = 'status-value ' + cls;
+}
+
+function setConnDot(state) {
+  const dot = document.getElementById('connDot');
+  dot.className = 'dot';
+  if (state === 'ok') dot.className = 'dot active';
+  else if (state === 'warn') dot.className = 'dot warn';
+  else if (state === 'err') dot.className = 'dot err';
+}
+
+function updateStats() {
+  document.getElementById('txCount').textContent = txCount;
+  document.getElementById('rxCount').textContent = rxCount;
+}
+
+// ──────────────────────────────────────────────
+// WebRTC
+// ──────────────────────────────────────────────
+function checkSupport() {
+  const supported = !!window.RTCPeerConnection;
+  setStatus('rtcSupport', supported ? 'Supported ✓' : 'Not Supported ✗', supported ? 'ok' : 'err');
+  if (!supported) log('RTCPeerConnection not available in this browser.', 'err');
+  return supported;
+}
+
+function createPC() {
+  if (pc) pc.close();
+  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+  pc.onicecandidate = e => {
+    if (!e.candidate) {
+      // Gathering complete — show full SDP
+      log('ICE gathering complete.', 'ok');
+      document.getElementById('localSDP').value = JSON.stringify(pc.localDescription);
+      document.getElementById('btnApply').disabled = false;
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    const s = pc.iceConnectionState;
+    log(`ICE state: ${s}`, s === 'connected' || s === 'completed' ? 'ok' : s === 'failed' ? 'err' : '');
+    setStatus('iceState', s, s === 'connected' || s === 'completed' ? 'ok' : s === 'failed' ? 'err' : 'warn');
+    setConnDot(s === 'connected' || s === 'completed' ? 'ok' : s === 'failed' ? 'err' : 'warn');
+  };
+
+  pc.ondatachannel = e => {
+    log('Incoming data channel received.', 'info');
+    setupDC(e.channel);
+  };
+}
+
+function setupDC(channel) {
+  dc = channel;
+  dc.onopen = () => {
+    log('Data channel OPEN ✓ — P2P connection established!', 'ok');
+    setStatus('dcState', 'open', 'ok');
+    setConnDot('ok');
+    document.getElementById('msgInput').disabled = false;
+    document.getElementById('btnSend').disabled = false;
+    document.getElementById('btnPing').disabled = false;
+  };
+  dc.onclose = () => {
+    log('Data channel closed.', 'warn');
+    setStatus('dcState', 'closed', 'warn');
+    setConnDot('warn');
+    document.getElementById('msgInput').disabled = true;
+    document.getElementById('btnSend').disabled = true;
+    document.getElementById('btnPing').disabled = true;
+  };
+  dc.onerror = e => {
+    log('Data channel error: ' + e.message, 'err');
+    setStatus('dcState', 'error', 'err');
+  };
+  dc.onmessage = e => {
+    const data = e.data;
+    rxCount++;
+    updateStats();
+
+    // Ping/pong handling
+    if (data === '__ping__') {
+      dc.send('__pong__');
+      return;
+    }
+    if (data === '__pong__') {
+      const rtt = Date.now() - pingSentAt;
+      document.getElementById('rttLabel').textContent = rtt + 'ms';
+      document.getElementById('pingResult').textContent = `↩ Pong received — RTT: ${rtt} ms`;
+      document.getElementById('pingResult').style.color = 'var(--success)';
+      log(`Pong received — RTT ${rtt}ms`, 'ok');
+      return;
+    }
+
+    log(`← [PEER] ${data}`, 'recv');
+  };
+  setStatus('dcState', 'connecting…', 'warn');
+}
+
+async function startHost() {
+  if (!checkSupport()) return;
+  reset(false);
+  role = 'host';
+  setStatus('roleLabel', 'HOST', 'ok');
+  log('Creating peer connection as HOST…', 'info');
+  createPC();
+
+  dc = pc.createDataChannel('game', { ordered: true });
+  setupDC(dc);
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  log('SDP offer created. Waiting for ICE…', 'info');
+}
+
+async function startJoin() {
+  if (!checkSupport()) return;
+  reset(false);
+  role = 'join';
+  setStatus('roleLabel', 'JOINER', 'ok');
+  log('Creating peer connection as JOINER…', 'info');
+  createPC();
+
+  // Create a dummy offer first so we can exchange, then we wait for host's offer
+  // Actually: joiner should paste host's offer first, then generate answer.
+  // So here, we auto-create an offer placeholder to clarify — but real flow:
+  // Joiner needs the host SDP first.
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  log('SDP offer created (share with host). Then paste host\'s SDP + Apply.', 'info');
+  document.getElementById('remoteSDP').placeholder = 'Paste the HOST\'s SDP here…';
+  document.getElementById('btnApply').disabled = false;
+}
+
+async function applyRemote() {
+  const raw = document.getElementById('remoteSDP').value.trim();
+  if (!raw) { log('No remote SDP entered.', 'warn'); return; }
+
+  let sdp;
+  try {
+    sdp = JSON.parse(raw);
+  } catch {
+    log('Invalid SDP — must be JSON.', 'err'); return;
+  }
+
+  try {
+    await pc.setRemoteDescription(sdp);
+    log(`Remote SDP applied (type: ${sdp.type}).`, 'ok');
+
+    if (sdp.type === 'offer') {
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      log('Answer created. Waiting for ICE…', 'info');
+      // Will populate localSDP after ICE gathers
+    } else {
+      log('Remote answer set. Waiting for ICE…', 'info');
+    }
+  } catch (err) {
+    log('Error applying remote SDP: ' + err.message, 'err');
+  }
+}
+
+function sendMsg() {
+  const input = document.getElementById('msgInput');
+  const msg = input.value.trim();
+  if (!msg || !dc || dc.readyState !== 'open') return;
+  dc.send(msg);
+  txCount++;
+  updateStats();
+  log(`→ [YOU] ${msg}`, 'ok');
+  input.value = '';
+}
+
+function sendPing() {
+  if (!dc || dc.readyState !== 'open') return;
+  pingSentAt = Date.now();
+  dc.send('__ping__');
+  txCount++;
+  updateStats();
+  document.getElementById('pingResult').textContent = 'Ping sent…';
+  document.getElementById('pingResult').style.color = 'var(--warn)';
+  log('→ Ping sent…', 'warn');
+}
+
+function copySDP() {
+  const val = document.getElementById('localSDP').value;
+  if (!val) { log('No local SDP yet.', 'warn'); return; }
+  navigator.clipboard.writeText(val).then(() => log('SDP copied to clipboard.', 'ok'))
+    .catch(() => {
+      document.getElementById('localSDP').select();
+      document.execCommand('copy');
+      log('SDP copied (fallback).', 'ok');
+    });
+}
+
+function reset(doLog = true) {
+  if (pc) { pc.close(); pc = null; }
+  dc = null; role = null; txCount = 0; rxCount = 0; pingSentAt = null;
+  document.getElementById('localSDP').value = '';
+  document.getElementById('remoteSDP').value = '';
+  document.getElementById('btnApply').disabled = true;
+  document.getElementById('msgInput').disabled = true;
+  document.getElementById('btnSend').disabled = true;
+  document.getElementById('btnPing').disabled = true;
+  document.getElementById('pingResult').textContent = '';
+  document.getElementById('rttLabel').textContent = '—';
+  setStatus('iceState', '—', '');
+  setStatus('dcState', '—', '');
+  setStatus('roleLabel', '—', '');
+  setConnDot('');
+  updateStats();
+  if (doLog) log('Reset.', 'warn');
+}
+
+// ──────────────────────────────────────────────
+// Init
+// ──────────────────────────────────────────────
+window.addEventListener('load', () => {
+  checkSupport();
+  log('WebRTC P2P Tester ready. Click HOST or JOIN to begin.', 'info');
+});
+</script>
+</body>
+</html>
